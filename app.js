@@ -37,6 +37,7 @@ function getTodayDate() {
   const day = String(today.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
+//estas 2 las dejo en el codigo pero no las voy a ejectuar de momento
 async function crearTablaProgresoDelDia() {
   const datasetId = "copia_bbdd_bq";
   const tableIdProgress = `tablaProgreso_${getTodayDate()}`;
@@ -352,6 +353,32 @@ async function verificarBigQuery() {
     console.error("Error en la conexión a BigQuery:", error);
   }
 }
+async function vaciarTablaAlumnos() {
+  const datasetId = "copia_bbdd_bq";
+  const tableId = "tablaAlumnos";
+
+  const query = `TRUNCATE TABLE \`${datasetId}.${tableId}\``;
+
+  try {
+    await bigquery.query({ query });
+    console.log("Tabla de alumnos vaciada correctamente.");
+  } catch (error) {
+    console.error("Error al vaciar la tabla de alumnos:", error);
+  }
+}
+async function vaciarTablaProgreso() {
+  const datasetId = "copia_bbdd_bq";
+  const tableId = "tablaProgreso";
+
+  const query = `TRUNCATE TABLE \`${datasetId}.${tableId}\``;
+
+  try {
+    await bigquery.query({ query });
+    console.log("Tabla de progreso vaciada correctamente.");
+  } catch (error) {
+    console.error("Error al vaciar la tabla de progreso:", error);
+  }
+}
 async function guardarAlumnosEnBigQuery(alumnos) {
   const datasetId = "copia_bbdd_bq";
   const tableId = "tablaAlumnos";
@@ -583,8 +610,10 @@ async function eliminarProgresoDuplicadoBigQuery() {
 async function start() {
   try {
     getTodayDate();
-    await crearTablaUsuariosDelDia();
-    await crearTablaProgresoDelDia();
+    //await crearTablaUsuariosDelDia();
+    //await crearTablaProgresoDelDia();
+    await vaciarTablaAlumnos();
+    await vaciarTablaProgreso();
     const cursos = await obtenerCursos();
     const alumnos = await obtenerAlumnos();
     await guardarAlumnosEnBigQuery(alumnos);
@@ -593,8 +622,8 @@ async function start() {
     await eliminarCursosDuplicadosBigQuery();
     await obtenerProgreso(alumnos);
     await eliminarProgresoDuplicadoBigQuery();
-    await copiarContenidoTablaAlumnosEnTablaAlumnosDelDia();
-    await copiarContenidoTablaProgresoEnTablaProgresoDelDia();
+    //await copiarContenidoTablaAlumnosEnTablaAlumnosDelDia();
+    //await copiarContenidoTablaProgresoEnTablaProgresoDelDia();
   } catch (error) {
     console.error("Error:", error);
   }
@@ -613,6 +642,7 @@ app.get("/start", async (req, res) => {
 //rutas para llamar a lw
 app.get("/obtener-alumnos", async (req, res) => {
   try {
+    await vaciarTablaAlumnos();
     const alumnos = await obtenerAlumnos();
     await guardarAlumnosEnBigQuery(alumnos);
     await eliminarAlumnosDuplicadosBigQuery();
@@ -634,6 +664,7 @@ app.get("/obtener-cursos", async (req, res) => {
   }
 });
 app.get("/obtener-progreso", async (req, res) => {
+  await vaciarTablaProgreso();
   try {
     const alumnos = await obtenerAlumnos();
     await obtenerProgreso(alumnos);
