@@ -37,120 +37,7 @@ function getTodayDate() {
   const day = String(today.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
-//estas 2 las dejo en el codigo pero no las voy a ejectuar de momento
-async function crearTablaProgresoDelDia() {
-  const datasetId = "copia_bbdd_bq";
-  const tableIdProgress = `tablaProgreso_${getTodayDate()}`;
 
-  const queryCreateTable = `
-    CREATE TABLE \`${datasetId}.${tableIdProgress}\`(
-      course_id STRING,
-      username STRING,
-      status STRING,
-      progress_rate STRING,
-      average_score_rate STRING,
-      time_on_course STRING,
-      total_units STRING,
-      completed_units STRING,
-      fecha STRING,
-      email STRING,
-      created STRING,
-      last_login STRING,
-      tags STRING,
-      nps_score STRING,
-      nps_comment STRING,
-      id STRING
-    )
-  `;
-
-  try {
-    await bigquery.query({ query: queryCreateTable });
-    console.log(
-      `Tabla de progreso del día ${getTodayDate()} creada correctamente.`
-    );
-  } catch (error) {
-    console.error(
-      `Error al crear la tabla de progreso del día ${getTodayDate()}:`,
-      error
-    );
-  }
-}
-async function crearTablaUsuariosDelDia() {
-  const datasetId = "copia_bbdd_bq";
-  const tableIdUsers = `tablaAlumnos_${getTodayDate()}`;
-
-  const queryCreateTable = `
-    CREATE TABLE \`${datasetId}.${tableIdUsers}\`(
-      id STRING,
-      email STRING,
-      username STRING,
-      created STRING,
-      last_login STRING,
-      tags STRING,
-      nps_score STRING,
-      nps_comment STRING
-    )
-  `;
-
-  try {
-    await bigquery.query({ query: queryCreateTable });
-    console.log(
-      `Tabla de usuarios del día ${getTodayDate()} creada correctamente.`
-    );
-  } catch (error) {
-    console.error(
-      `Error al crear la tabla de usuarios del día ${getTodayDate()}:`,
-      error
-    );
-  }
-}
-async function copiarContenidoTablaAlumnosEnTablaAlumnosDelDia() {
-  const datasetId = "copia_bbdd_bq";
-  const tableId = "tablaAlumnos";
-  const tableIdUsers = `tablaAlumnos_${getTodayDate()}`;
-
-  const queryCopyTable = `
-    INSERT INTO \`${datasetId}.${tableIdUsers}\`
-    SELECT *
-    FROM \`${datasetId}.${tableId}\`
-  `;
-
-  try {
-    await bigquery.query({ query: queryCopyTable });
-    console.log(
-      `Contenido de la tabla de usuarios copiado a la tabla del día ${getTodayDate()} correctamente.`
-    );
-  } catch (error) {
-    console.error(
-      `Error al copiar el contenido de la tabla de usuarios a la tabla del día ${getTodayDate()}:`,
-      error
-    );
-  }
-}
-async function copiarContenidoTablaProgresoEnTablaProgresoDelDia() {
-  const datasetId = "copia_bbdd_bq";
-  const tableId = "tablaProgreso";
-  const tableIdProgress = `tablaProgreso_${getTodayDate()}`;
-
-  const queryCopyTable = `
-    INSERT INTO \`${datasetId}.${tableIdProgress}\`
-    SELECT *
-    FROM \`${datasetId}.${tableId}\`
-    
-  `;
-
-  try {
-    await bigquery.query({ query: queryCopyTable });
-    console.log(
-      `Contenido de la tabla de progreso copiado a la tabla del día ${getTodayDate()} correctamente.`
-    );
-  } catch (error) {
-    console.error(
-      `Error al copiar el contenido de la tabla de progreso a la tabla del día ${getTodayDate()}:`,
-      error
-    );
-  }
-}
 async function obtenerAlumnos() {
   console.log("Iniciando la obtención de alumnos...");
 
@@ -169,14 +56,35 @@ async function obtenerAlumnos() {
     try {
       const response = await axios.get(url, {
         headers: headers,
-        params: { page: page, items_per_page: "150" },
+        params: { page: page, items_per_page: "20" },
       });
 
       console.log(`Fetched page: ${page}`);
       if (response.data && response.data.data.length > 0) {
-        userLst.push(...response.data.data);
-        const { totalPages } = response.data.meta;
+        response.data.data.forEach((user) => {
+          try {
+            const processedUser = {
+              id: String(user.id),
+              email: String(user.email),
+              username: String(user.username),
+              created: user.created, // Dejar como timestamp en segundos
+              last_login: user.last_login ? user.last_login : null, // Dejar como timestamp en segundos o null
+              tags: JSON.stringify(user.tags).replace(/"/g, "'"), // Reemplazar comillas dobles por simples
+              nps_score:
+                user.nps_score !== null ? user.nps_score.toFixed(1) : null, // Asegurar formato decimal
+              nps_comment:
+                user.nps_comment !== null ? String(user.nps_comment) : "None", // Si es null, cambiar a "None"
+            };
 
+            // Agregar a la lista de usuarios procesados
+            userLst.push(processedUser);
+          } catch (error) {
+            console.error(`Error procesando usuario ID ${user.id}:`, error);
+            // Continuar con el siguiente usuario
+          }
+        });
+
+        const { totalPages } = response.data.meta;
         page += 1;
         hasMorePages = page <= totalPages;
       } else {
@@ -188,25 +96,13 @@ async function obtenerAlumnos() {
         `Error fetching page ${page}:`,
         error.response ? error.response.data : error
       );
-      hasMorePages = false;
+      console.log("Intentando continuar con la siguiente página...");
+      page += 1;
     }
   }
 
-  const users = userLst.map((user) => ({
-    id: String(user.id),
-    email: String(user.email),
-    username: String(user.username),
-    created: user.created, // Dejar como timestamp en segundos
-    last_login: user.last_login ? user.last_login : null, // Dejar como timestamp en segundos o null
-    tags: JSON.stringify(user.tags),
-    //remplazar comillas dobles por simples
-    tags: JSON.stringify(user.tags).replace(/"/g, "'"),
-    nps_score: user.nps_score !== null ? user.nps_score.toFixed(1) : null, // Asegurarse de que el formato sea decimal (e.g. 10.0)
-    nps_comment: user.nps_comment !== null ? String(user.nps_comment) : "None", // Si es null, cambiar a "None"
-  }));
-
-  console.log("Usuarios procesados:", users.length);
-  return users;
+  console.log("Usuarios procesados:", userLst.length);
+  return userLst;
 }
 async function obtenerCursos() {
   console.log("Iniciando la obtención de cursos...");
@@ -270,54 +166,74 @@ async function obtenerProgreso(alumnos) {
   };
 
   const users = alumnos;
-
   const userMap = new Map();
   users.forEach((user) => {
     userMap.set(user.id, user);
   });
 
   for (const userId of userMap.keys()) {
+    let currentPage = 1;
+    let totalPages = 1;
+    let allProgressData = [];
+
     try {
-      const url = `https://academy.turiscool.com/admin/api/v2/users/${userId}/progress`;
-      const response = await axios.get(url, {
-        headers: headers,
-        params: { items_per_page: "150" },
-      });
-
-      if (response.data && response.data.data.length > 0) {
-        console.log(`Progreso encontrado para el usuario ${userId}.`);
-
-        const progressData = response.data.data.map((progress) => {
-          const user = userMap.get(userId);
-
-          return {
-            course_id: String(progress.course_id),
-            status: String(progress.status),
-            progress_rate: String(progress.progress_rate),
-            average_score_rate: String(progress.average_score_rate),
-            time_on_course: String(progress.time_on_course),
-            total_units: String(progress.total_units),
-            completed_units: String(progress.completed_units),
-            id: String(userId),
-            email: String(user.email),
-            username: String(user.username),
-            created: String(user.created), // Timestamp en segundos
-            last_login: String(user.last_login), // Timestamp en segundos
-            tags: String(user.tags),
-            nps_score: String(user.nps_score || ""),
-            nps_comment: String(user.nps_comment || ""),
-            fecha: new Date().toISOString().split("T")[0],
-          };
+      while (currentPage <= totalPages) {
+        const url = `https://academy.turiscool.com/admin/api/v2/users/${userId}/progress`;
+        const response = await axios.get(url, {
+          headers: headers,
+          params: {
+            items_per_page: 150,
+            page: currentPage,
+          },
         });
 
-        await guardarProgresoEnBigQuery(progressData);
+        const progressArray = response.data.data || [];
+
+        if (progressArray.length > 0) {
+          console.log(
+            `Progreso encontrado para el usuario ${userId}, página ${currentPage}.`
+          );
+
+          const progressData = progressArray.map((progress) => {
+            const user = userMap.get(userId);
+            return {
+              course_id: String(progress.course_id),
+              status: String(progress.status),
+              progress_rate: String(progress.progress_rate),
+              average_score_rate: String(progress.average_score_rate),
+              time_on_course: String(progress.time_on_course),
+              total_units: String(progress.total_units),
+              completed_units: String(progress.completed_units),
+              id: String(userId),
+              email: String(user.email),
+              username: String(user.username),
+              created: String(user.created),
+              last_login: String(user.last_login),
+              tags: String(user.tags),
+              nps_score: String(user.nps_score || ""),
+              nps_comment: String(user.nps_comment || ""),
+              fecha: new Date().toISOString().split("T")[0],
+            };
+          });
+
+          allProgressData.push(...progressData);
+
+          // Actualizar la paginación
+          totalPages = response.data.pagination.total_pages;
+          currentPage++;
+        } else {
+          console.log(`No se encontró progreso para el usuario ${userId}.`);
+          break;
+        }
+      }
+
+      if (allProgressData.length > 0) {
+        await guardarProgresoEnBigQuery(allProgressData);
         console.log(`Progreso guardado en BigQuery para el usuario ${userId}.`);
-        await guardarProgresoEnBigQueryAcumulado(progressData);
+        await guardarProgresoEnBigQueryAcumulado(allProgressData);
         console.log(
           `Progreso acumulado guardado en BigQuery para el usuario ${userId}.`
         );
-      } else {
-        console.log(`No se encontró progreso para el usuario ${userId}.`);
       }
     } catch (error) {
       if (
@@ -339,7 +255,6 @@ async function obtenerProgreso(alumnos) {
 
   const endTime = new Date();
   const timeDiff = (endTime - startTime) / 1000;
-
   console.log(
     `Proceso de obtención de progreso finalizado. Tiempo total: ${timeDiff} segundos.`
   );
